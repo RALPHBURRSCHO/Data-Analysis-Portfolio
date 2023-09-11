@@ -1,0 +1,142 @@
+--Selecting all vaccination data
+Select *
+From PortfolioProject..['Covid Vaccinations']
+
+--Find population of continents
+Select dea.location, dea.population
+From PortfolioProject..['Covid Vaccinations'] vac
+join PortfolioProject..['Covid Deaths'] dea
+	On dea.location = vac.location
+	and dea.date = vac.date
+where dea.continent is null and dea.location not like '%income%' --Too ignore breakdown of data by income bracket
+group by dea.population, dea.location;
+
+--Creating a rolling Vaccinationcount
+With PopvsVac (Continent, Location, Date, Population, new_Vaccinations, RollingVacCount)
+as
+(Select dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(CAST(vac.new_vaccinations as bigint)) OVER (Partition by dea.location ORDER by dea.location, dea.date) as RollingVacCount
+From PortfolioProject..['Covid Deaths'] dea
+Join PortfolioProject..['Covid Vaccinations'] vac
+	On dea.location = vac.location
+	and dea.date = vac.date
+Where dea.continent is not null)
+Select Continent, Location, 
+    Date, 
+    Population, 
+    new_Vaccinations, 
+    RollingVacCount
+From PopvsVac;
+
+--Vaccination roll out by continent
+With PopvsVac (Location, Date, Population, new_Vaccinations, RollingVacCount)
+as
+(Select dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(CAST(vac.new_vaccinations as bigint)) OVER (Partition by dea.location ORDER by dea.location, dea.date) as RollingVacCount
+From PortfolioProject..['Covid Deaths'] dea
+Join PortfolioProject..['Covid Vaccinations'] vac
+	On dea.location = vac.location
+	and dea.date = vac.date
+Where dea.continent is null)
+Select Location, 
+    Date, 
+    Population, 
+    new_Vaccinations, 
+    RollingVacCount
+From PopvsVac;
+
+--Looking at Vaccinations per Capita
+With PopvsVac (Continent, Location, Date, Population, new_Vaccinations, RollingVacCount)
+as
+(Select dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(CAST(vac.new_vaccinations as bigint)) OVER (Partition by dea.location ORDER by dea.location, dea.date) as RollingVacCount
+From PortfolioProject..['Covid Deaths'] dea
+Join PortfolioProject..['Covid Vaccinations'] vac
+	On dea.location = vac.location
+	and dea.date = vac.date
+Where dea.continent is not null)
+Select Continent, Location, 
+    Date, 
+    Population, 
+    new_Vaccinations, 
+    RollingVacCount,
+	(RollingVacCount/Population) *100 as RollingVacCountbyPop
+From PopvsVac;
+
+--Vaccinations per Capita by continent
+With PopvsVac (Location, Date, Population, new_Vaccinations, RollingVacCount)
+as
+(Select dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(CAST(vac.new_vaccinations as bigint)) OVER (Partition by dea.location ORDER by dea.location, dea.date) as RollingVacCount
+From PortfolioProject..['Covid Deaths'] dea
+Join PortfolioProject..['Covid Vaccinations'] vac
+	On dea.location = vac.location
+	and dea.date = vac.date
+Where dea.continent is null and dea.location not like '%income%' and dea.location not like '%world%')
+Select Location, 
+    Date, 
+    Population, 
+    new_Vaccinations, 
+    RollingVacCount,
+	(RollingVacCount/Population) *100 as RollingVacCountbyPop
+From PopvsVac;
+
+--First Vaccination by Country
+Select min(date) as FirstVaccination, continent, location
+from ['Covid Vaccinations']
+where new_vaccinations is not null and continent is not null
+group by location, continent
+order by 1
+
+--Creating view to store data for visualisations
+Create View PopvsVacView as
+Select dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(CAST(vac.new_vaccinations as bigint)) OVER (Partition by dea.location ORDER by dea.location, dea.date) as RollingPeopleVaccinated
+From PortfolioProject..['Covid Deaths'] dea
+Join PortfolioProject..['Covid Vaccinations'] vac
+	On dea.location = vac.location
+	and dea.date = vac.date
+Where dea.continent is not null
+
+--Creating a rolling vaccination, infected and death count to investigate whether vaccination rates relate to infection and death rates
+With VacvsInfected (Location, Date, new_Vaccinations, new_cases, RollingVacCount, RollingInfectedCount, RollingDeathCount)
+as
+(Select dea.location, dea.date, vac.new_vaccinations, dea.new_cases
+, SUM(CAST(vac.new_vaccinations as bigint)) OVER (Partition by dea.location ORDER by dea.location, dea.date)
+, SUM(dea.new_cases) OVER (Partition by dea.location ORDER by dea.location, dea.date)
+, SUM(dea.new_deaths) OVER (Partition by dea.location ORDER by dea.location, dea.date)
+From PortfolioProject..['Covid Deaths'] dea
+Join PortfolioProject..['Covid Vaccinations'] vac
+	On dea.location = vac.location
+	and dea.date = vac.date
+Where dea.continent is not null)
+Select Location, 
+    Date, 
+    new_Vaccinations, 
+    new_cases,
+	RollingVacCount,
+	RollingInfectedCount,
+	RollingDeathCount
+From VacvsInfected;
+
+--Rolling values by Continent
+With VacvsInfected (Location, Date, population, new_Vaccinations, new_cases, RollingVacCount, RollingInfectedCount, RollingDeathCount)
+as
+(Select dea.location, dea.date, dea.population, vac.new_vaccinations, dea.new_cases
+, SUM(CAST(vac.new_vaccinations as bigint)) OVER (Partition by dea.location ORDER by dea.location, dea.date)
+, SUM(dea.new_cases) OVER (Partition by dea.location ORDER by dea.location, dea.date)
+, SUM(dea.new_deaths) OVER (Partition by dea.location ORDER by dea.location, dea.date)
+From PortfolioProject..['Covid Deaths'] dea
+Join PortfolioProject..['Covid Vaccinations'] vac
+	On dea.location = vac.location
+	and dea.date = vac.date
+Where dea.continent is null and dea.location not like '%income%' and dea.location not like '%world%')
+Select Location, 
+    Date,
+	population,
+    new_Vaccinations, 
+    new_cases,
+	(RollingVacCount/population) *100 as RollingVacCountbyPop,
+	(RollingInfectedCount/population) *100 as RollingInfectedCountbyPop,
+	(RollingDeathCount/population) *100 as RollingDeathCountbyPop
+From VacvsInfected;
