@@ -1,0 +1,75 @@
+Select *
+From PortfolioProject..NashvilleHousing
+
+--Adding a better formatted date column  
+ALTER TABLE NashVilleHousing
+Add SaleDateConverted Date;
+
+Update NashvilleHousing
+SET SaleDateConverted = CONVERT(Date,SaleDate);
+
+--Populate missing Property Address data with Property Address from another order with the same ParcelID
+Update a
+SET PropertyAddress = ISNULL(a.PropertyAddress,b.PropertyAddress)
+From PortfolioProject.dbo.NashvilleHousing a
+Join PortfolioProject.dbo.NashvilleHousing b
+	On a.ParcelID = b.ParcelID
+	AND a.UniqueID <> B.UniqueID --Making sure UniqueID is different and therefore is two seperate orders
+Where a.PropertyAddress is null
+
+--Breaking out Property Address into Individual Columns (Address, City)
+Alter Table NashvilleHousing
+Add Property_Address Nvarchar(255);
+
+Update NashvilleHousing
+SET Property_Address = SUBSTRING(PropertyAddress, 1, CHARINDEX(',',PropertyAddress) -1)
+
+Alter Table NashvilleHousing
+Add Property_City Nvarchar(255);
+
+Update NashvilleHousing
+SET Property_City = SUBSTRING(PropertyAddress, CHARINDEX(',',PropertyAddress) +1, LEN(PropertyAddress))
+
+--Split Owner Address into Address, City, State using Parse
+
+Alter Table NashvilleHousing
+Add Owner_Address Nvarchar(255);
+
+Alter Table NashvilleHousing
+Add Owner_City Nvarchar(255);
+
+Alter Table NashvilleHousing
+Add Owner_State Nvarchar(255);
+
+Update NashvilleHousing
+SET Owner_Address = PARSENAME(REPLACE(OwnerAddress, ',', '.'),3)
+
+Update NashvilleHousing
+SET Owner_City = PARSENAME(REPLACE(OwnerAddress, ',', '.'),2)
+
+Update NashvilleHousing
+SET Owner_State = PARSENAME(REPLACE(OwnerAddress, ',', '.'),1)
+
+--Change Y and N to Yes and No in "Sold as Vacant" Column
+Update NashvilleHousing
+SET SoldAsVacant = CASE When SoldAsVacant = 'Y' Then 'Yes'
+	   When SoldAsVacant = 'N' Then 'No'
+	   ELSE SoldAsVacant --If value is already Yes or No then no changes are made
+	   END
+
+Select Distinct(SoldAsVacant), COUNT(SoldAsVacant) --Query to Test Update was sucessful
+From PortfolioProject..NashvilleHousing
+Group by SoldAsVacant
+Order by 2
+
+--Searching for Duplicates
+WITH cte AS (
+    SELECT *, ROW_NUMBER() OVER (PARTITION BY ParcelID, OwnerAddress, LegalReference ORDER BY ParcelID DESC) AS rn
+    FROM PortfolioProject..NashvilleHousing
+)
+SELECT * FROM cte
+WHERE rn > 1;
+
+--Delete Unused Columns
+ALTER TABLE PortfolioProject.dbo.NashvilleHousing
+DROP COLUMN OwnerAddress, PropertyAddress, TaxDistrict, SaleDate
